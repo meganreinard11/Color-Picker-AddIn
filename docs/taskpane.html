@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Color Picker</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="container">
+    <h2>🎨 Excel Color Picker</h2>
+
+    <div class="picker-row">
+      <label for="colorInput">Pick:</label>
+      <input type="color" id="colorInput" value="#F7E380" />
+      <input type="text" id="hexInput" value="#F7E380" maxlength="9" />
+      <button id="applyBtn" class="primary">Apply to Selection</button>
+    </div>
+
+    <div class="options">
+      <label><input type="checkbox" id="targetFill" checked /> Fill</label>
+      <label><input type="checkbox" id="targetFont" /> Font</label>
+      <label><input type="checkbox" id="targetBorders" /> Borders (outline)</label>
+    </div>
+
+    <div class="eyedropper-row">
+      <button id="eyedropperScreenBtn" class="secondary">Eyedropper (Screen)</button>
+      <button id="eyedropperCellBtn" class="secondary">Eyedropper (Cell)</button>
+      <span id="eyedropperStatus" class="muted"></span>
+    </div>
+
+    <div class="sections">
+      <h3>Theme Colors</h3>
+      <div id="themeGrid" class="swatches"></div>
+
+      <h3>Recent</h3>
+      <div id="recentGrid" class="swatches"></div>
+
+      <h3>Standard Palette</h3>
+      <div id="standardGrid" class="swatches"></div>
+    </div>
+
+    <div class="actions">
+      <button id="getFillBtn">Read Fill from Selection</button>
+      <button id="getFontBtn">Read Font from Selection</button>
+      <button id="clearBtn">Clear Fill/Font</button>
+    </div>
+
+    <p class="muted">Tips: Your recent colors save locally. “Eyedropper (Screen)” requires a supported browser/webview; otherwise use “Eyedropper (Cell)”.</p>
+  </div>
+
+  <script src="taskpane.js"></script>
+</body>
+</html>
