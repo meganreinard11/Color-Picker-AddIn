@@ -1,0 +1,18 @@
+*{box-sizing:border-box}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;padding:16px;background:#f6f7fb;color:#222}
+.container{background:#fff;border:1px solid #e4e7ef;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);padding:16px;max-width:620px}
+h2{margin-top:0}
+h3{margin:16px 0 6px 0;font-size:14px;color:#334}
+.picker-row{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+#colorInput{width:44px;height:36px;padding:0;border:none;outline:none;border-radius:8px}
+#hexInput{width:120px;padding:8px;border:1px solid #ccd1e0;border-radius:8px;font-family:ui-monospace,Consolas,monospace}
+.primary{background:#227be6;color:#fff;border:none;border-radius:10px;padding:8px 12px;cursor:pointer}
+.primary:hover{filter:brightness(.95)}
+.secondary{background:#fff;color:#1b5fcc;border:1px solid #cfe0ff;border-radius:10px;padding:8px 12px;cursor:pointer}
+.secondary:hover{background:#f3f8ff}
+.options{display:flex;gap:12px;align-items:center;margin:12px 0}
+.eyedropper-row{display:flex;gap:8px;align-items:center;margin:8px 0 16px 0;flex-wrap:wrap}
+.swatches{display:grid;grid-template-columns:repeat(12, 1fr);gap:6px}
+.swatch{width:24px;height:24px;border-radius:6px;border:1px solid rgba(0,0,0,.1);cursor:pointer}
+.actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.muted{color:#667; font-size:12px}
+.badge{font-size:10px;padding:2px 6px;border:1px solid #dfe3ef;border-radius:999px;color:#445;background:#f8f9fd}
