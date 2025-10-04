@@ -6,7 +6,7 @@
     "#dd7e6b","#ea9999","#f9cb9c","#ffe599","#b6d7a8","#a2c4c9","#a4c2f4","#9fc5e8","#b4a7d6","#d5a6bd"
   ];
 
-  const STORE_SHEET = "_ColorPickerData";
+  const STORE_SHEET = "_Settings";
   const RECENT_LIMIT = 18;
 
   let recentCache = [];
