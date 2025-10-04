@@ -1,4 +1,5 @@
 
+
 (function () {
   const standardPalette = [
     "#000000","#434343","#666666","#999999","#b7b7b7","#cccccc","#d9d9d9","#efefef","#f3f3f3","#ffffff",
@@ -7,109 +8,15 @@
     "#dd7e6b","#ea9999","#f9cb9c","#ffe599","#b6d7a8","#a2c4c9","#a4c2f4","#9fc5e8","#b4a7d6","#d5a6bd"
   ];
 
-  // ---- Recent colors ----
-  let recent = JSON.parse(localStorage.getItem("recentColors") || "[]");
+  const STORE_SHEET = "_ColorPickerData";
+  const RECENT_LIMIT = 18;
 
-  function saveRecent(color) {
-    if (!color) return;
-    recent = [color, ...recent.filter(c => c.toLowerCase() !== color.toLowerCase())].slice(0, 18);
-    localStorage.setItem("recentColors", JSON.stringify(recent));
-    renderRecents();
-  }
+  let recentCache = [];
 
-  // ---- Theme colors ----
-  let themeColors = null;
-  function readOfficeTheme() {
-    // Returns an array of hex colors derived from Office theme if available
-    try {
-      const t = Office.context && Office.context.officeTheme;
-      if (t) {
-        const keys = ["background1","text1","background2","text2","accent1","accent2","accent3","accent4","accent5","accent6","hyperlink","followedHyperlink"];
-        // Normalize and filter truthy values
-        const list = [];
-        keys.forEach(k => {
-          const v = t[k];
-          if (v && typeof v === "string") {
-            const hex = normalizeHex(v);
-            if (hex) list.push({ key:k, value:hex });
-          }
-        });
-        if (list.length) return list;
-      }
-    } catch (e) {
-      console.warn("Theme read failed:", e);
-    }
-    return null;
-  }
-
-  function renderTheme() {
-    const el = document.getElementById("themeGrid");
-    el.innerHTML = "";
-    const theme = themeColors || readOfficeTheme();
-    if (theme) {
-      themeColors = theme;
-      theme.forEach(item => {
-        const sw = document.createElement("button");
-        sw.className = "swatch";
-        sw.title = item.key + ": " + item.value;
-        sw.style.background = item.value;
-        sw.addEventListener("click", () => setColorInputs(item.value));
-        el.appendChild(sw);
-      });
-    } else {
-      // Fallback: show Excel-like default accents
-      const fallback = ["#000000","#FFFFFF","#1F497D","#4F81BD","#C0504D","#9BBB59","#8064A2","#4BACC6","#F79646"];
-      fallback.forEach(c => {
-        const sw = document.createElement("button");
-        sw.className = "swatch";
-        sw.title = c;
-        sw.style.background = c;
-        sw.addEventListener("click", () => setColorInputs(c));
-        el.appendChild(sw);
-      });
-    }
-  }
-
-  if (Office && Office.onOfficeThemeChanged) {
-    Office.onOfficeThemeChanged(() => {
-      themeColors = null;
-      renderTheme();
-    });
-  }
-
-  // ---- Swatch renderers ----
-  function renderRecents() {
-    const el = document.getElementById("recentGrid");
-    el.innerHTML = "";
-    (recent || []).forEach(c => {
-      const sw = document.createElement("button");
-      sw.className = "swatch";
-      sw.title = c;
-      sw.style.background = c;
-      sw.addEventListener("click", () => setColorInputs(c));
-      el.appendChild(sw);
-    });
-  }
-
-  function renderStandard() {
-    const el = document.getElementById("standardGrid");
-    el.innerHTML = "";
-    standardPalette.forEach(c => {
-      const sw = document.createElement("button");
-      sw.className = "swatch";
-      sw.title = c;
-      sw.style.background = c;
-      sw.addEventListener("click", () => setColorInputs(c));
-      el.appendChild(sw);
-    });
-  }
-
-  // ---- Helpers ----
   function normalizeHex(value) {
     if (!value) return null;
-    let v = value.trim();
+    let v = (""+value).trim();
     if (v.startsWith("rgb")) {
-      // Convert rgb(a) to hex
       const m = v.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
       if (m) {
         const r = Number(m[1]).toString(16).padStart(2,"0");
@@ -134,6 +41,157 @@
     document.getElementById("hexInput").value = norm;
   }
 
+  async function ensureStoreSheet(context) {
+    let sheet = context.workbook.worksheets.getItemOrNullObject(STORE_SHEET);
+    sheet.load("name,isNullObject,visibility");
+    await context.sync();
+    if (sheet.isNullObject) {
+      sheet = context.workbook.worksheets.add(STORE_SHEET);
+      sheet.visibility = "Hidden";
+      const r = sheet.getRange(`A1:A${RECENT_LIMIT}`);
+      r.numberFormat = "@";
+    }
+    return sheet;
+  }
+
+  async function getRecentColors() {
+    return Excel.run(async (context) => {
+      const sheet = await ensureStoreSheet(context);
+      const rng = sheet.getRange(`A1:A${RECENT_LIMIT}`);
+      rng.load("values");
+      await context.sync();
+      const list = (rng.values || [])
+        .map(row => (row[0] || "").toString().trim())
+        .filter(v => !!normalizeHex(v));
+      const seen = new Set();
+      const uniq = [];
+      list.forEach(v => {
+        const u = normalizeHex(v);
+        if (u && !seen.has(u)) { seen.add(u); uniq.push(u); }
+      });
+      recentCache = uniq;
+      renderRecentsFromArray(uniq);
+      return uniq;
+    }).catch(e => {
+      console.warn("getRecentColors failed:", e);
+      recentCache = [];
+      renderRecentsFromArray([]);
+      return [];
+    });
+  }
+
+  async function setRecentColors(newList) {
+    return Excel.run(async (context) => {
+      const sheet = await ensureStoreSheet(context);
+      const seen = new Set();
+      const uniq = [];
+      newList.forEach(v => {
+        const u = normalizeHex(v);
+        if (u && !seen.has(u)) { seen.add(u); uniq.push(u); }
+      });
+      const trimmed = uniq.slice(0, RECENT_LIMIT);
+      const rows = [];
+      for (let i = 0; i < RECENT_LIMIT; i++) rows.push([trimmed[i] || ""]);
+      const rng = sheet.getRange(`A1:A${RECENT_LIMIT}`);
+      rng.values = rows;
+      rng.numberFormat = "@";
+      await context.sync();
+      recentCache = trimmed;
+      renderRecentsFromArray(trimmed);
+      return trimmed;
+    }).catch(e => {
+      console.error("setRecentColors failed:", e);
+      return recentCache;
+    });
+  }
+
+  async function pushRecentColor(color) {
+    const hex = normalizeHex(color);
+    if (!hex) return recentCache;
+    const merged = [hex, ...recentCache.filter(c => c !== hex)];
+    return setRecentColors(merged);
+  }
+
+  let themeColors = null;
+  function readOfficeTheme() {
+    try {
+      const t = Office.context && Office.context.officeTheme;
+      if (t) {
+        const keys = ["background1","text1","background2","text2","accent1","accent2","accent3","accent4","accent5","accent6","hyperlink","followedHyperlink"];
+        const list = [];
+        keys.forEach(k => {
+          const v = t[k];
+          if (v && typeof v === "string") {
+            const hex = normalizeHex(v);
+            if (hex) list.push({ key:k, value:hex });
+          }
+        });
+        if (list.length) return list;
+      }
+    } catch (e) { console.warn("Theme read failed:", e); }
+    return null;
+  }
+
+  function renderTheme() {
+    const el = document.getElementById("themeGrid");
+    if (!el) return;
+    el.innerHTML = "";
+    const theme = themeColors || readOfficeTheme();
+    if (theme) {
+      themeColors = theme;
+      theme.forEach(item => {
+        const sw = document.createElement("button");
+        sw.className = "swatch";
+        sw.title = item.key + ": " + item.value;
+        sw.style.background = item.value;
+        sw.addEventListener("click", () => setColorInputs(item.value));
+        el.appendChild(sw);
+      });
+    } else {
+      const fallback = ["#000000","#FFFFFF","#1F497D","#4F81BD","#C0504D","#9BBB59","#8064A2","#4BACC6","#F79646"];
+      fallback.forEach(c => {
+        const sw = document.createElement("button");
+        sw.className = "swatch";
+        sw.title = c;
+        sw.style.background = c;
+        sw.addEventListener("click", () => setColorInputs(c));
+        el.appendChild(sw);
+      });
+    }
+  }
+
+  if (Office && Office.onOfficeThemeChanged) {
+    Office.onOfficeThemeChanged(() => { themeColors = null; renderTheme(); });
+  }
+
+  function renderRecentsFromArray(arr) {
+    const el = document.getElementById("recentGrid");
+    if (!el) return;
+    el.innerHTML = "";
+    (arr || []).forEach(c => {
+      const sw = document.createElement("button");
+      sw.className = "swatch";
+      sw.title = c;
+      sw.style.background = c;
+      sw.addEventListener("click", () => setColorInputs(c));
+      el.appendChild(sw);
+    });
+  }
+
+  function renderStandard() {
+    const el = document.getElementById("standardGrid");
+    if (!el) return;
+    el.innerHTML = "";
+    standardPalette.forEach(c => {
+      const sw = document.createElement("button");
+      sw.className = "swatch";
+      sw.title = c;
+      sw.style.background = c;
+      sw.addEventListener("click", () => setColorInputs(c));
+      el.appendChild(sw);
+    });
+  }
+
   function getTargets() {
     return {
       fill: document.getElementById("targetFill").checked,
@@ -142,29 +200,23 @@
     };
   }
 
-  // ---- Excel actions ----
   async function applyToSelection(hex) {
     const color = normalizeHex(hex);
-    if (!color) {
-      alert("Enter a valid hex color like #FFAA33");
-      return;
-    }
+    if (!color) { 
+		alert("Enter a valid hex color like #FFAA33");
+		return;
+	}
     const targets = getTargets();
     if (!targets.fill && !targets.font && !targets.borders) {
-      alert("Choose at least one target (Fill, Font, Borders).");
-      return;
-    }
+		alert("Choose at least one target (Fill, Font, Borders)."); 
+		return; 
+	}
     await Excel.run(async (context) => {
       const range = context.workbook.getSelectedRange();
       range.load(["address"]);
       await context.sync();
-
-      if (targets.fill) {
-        range.format.fill.color = color;
-      }
-      if (targets.font) {
-        range.format.font.color = color;
-      }
+      if (targets.fill)  range.format.fill.color = color;
+      if (targets.font)  range.format.font.color = color;
       if (targets.borders) {
         const edges = ["EdgeTop","EdgeBottom","EdgeLeft","EdgeRight"];
         edges.forEach(e => {
@@ -174,11 +226,9 @@
         });
       }
       await context.sync();
-      saveRecent(color);
-    }).catch(err => {
-      console.error(err);
-      alert("Excel API error: " + err);
-    });
+    }).catch(e => {
+		alert("Excel API error: " + e));
+    await pushRecentColor(color);
   }
 
   async function readFillFromSelection() {
@@ -188,7 +238,8 @@
       await context.sync();
       const c = range.format.fill.color;
       if (c) setColorInputs(c);
-    }).catch(err => alert("Excel API error: "+err));
+      await pushRecentColor(c);
+    }).catch(e => alert("Excel API error: " + e));
   }
 
   async function readFontFromSelection() {
@@ -198,7 +249,8 @@
       await context.sync();
       const c = range.format.font.color;
       if (c) setColorInputs(c);
-    }).catch(err => alert("Excel API error: "+err));
+      await pushRecentColor(c);
+    }).catch(e => alert("Excel API error: " + e));
   }
 
   async function clearFillFont() {
@@ -207,35 +259,24 @@
       range.format.fill.clear();
       range.format.font.color = null;
       await context.sync();
-    }).catch(err => alert("Excel API error: "+err));
+    }).catch(e => alert("Excel API error: " + e));
   }
 
-  // ---- Eyedropper ----
   async function eyedropperScreen() {
     const status = document.getElementById("eyedropperStatus");
-    if (!("EyeDropper" in window)) {
-      status.textContent = "Screen eyedropper not supported. Use Eyedropper (Cell).";
-      return;
-    }
+    if (!("EyeDropper" in window)) { status.textContent = "Screen eyedropper not supported here. Use Eyedropper (Cell)."; return; }
     try {
       status.textContent = "Pick a pixel…";
       const dropper = new window.EyeDropper();
-      const result = await dropper.open(); // { sRGBHex: '#RRGGBB' }
+      const result = await dropper.open();
       if (result && result.sRGBHex) {
         setColorInputs(result.sRGBHex);
-        saveRecent(result.sRGBHex);
+        await pushRecentColor(result.sRGBHex);
         status.textContent = "Picked " + result.sRGBHex.toUpperCase();
-      } else {
-        status.textContent = "";
-      }
-    } catch (e) {
-      // User canceled or blocked
-      status.textContent = "";
-      console.warn("Eyedropper canceled/blocked:", e);
-    }
+      } else { status.textContent = ""; }
+    } catch (e) { status.textContent = ""; }
   }
 
-  // Fallback: click a cell to sample its fill color once
   let cellSampleHandler = null;
   async function eyedropperCell() {
     const status = document.getElementById("eyedropperStatus");
@@ -243,14 +284,8 @@
     try {
       await Excel.run(async (context) => {
         const sheet = context.workbook.worksheets.getActiveWorksheet();
-
-        // Remove any prior handler
-        if (cellSampleHandler) {
-          try { sheet.onSelectionChanged.remove(cellSampleHandler); } catch {}
-          cellSampleHandler = null;
-        }
-
-        cellSampleHandler = sheet.onSelectionChanged.add(async (evt) => {
+        if (cellSampleHandler) { try { sheet.onSelectionChanged.remove(cellSampleHandler); } catch {} cellSampleHandler = null; }
+        cellSampleHandler = sheet.onSelectionChanged.add(async (_evt) => {
           try {
             await Excel.run(async (innerContext) => {
               const r = innerContext.workbook.getSelectedRange();
@@ -259,7 +294,7 @@
               const c = r.format.fill.color;
               if (c) {
                 setColorInputs(c);
-                saveRecent(c);
+                await pushRecentColor(c);
                 const statusEl = document.getElementById("eyedropperStatus");
                 if (statusEl) statusEl.textContent = "Sampled " + c.toUpperCase();
               } else {
@@ -268,15 +303,13 @@
               }
             });
           } finally {
-            // Remove handler after one sample
             try { sheet.onSelectionChanged.remove(cellSampleHandler); } catch {}
             cellSampleHandler = null;
           }
         });
       });
     } catch (e) {
-      console.warn("Eyedropper (Cell) not available: ", e);
-      status.textContent = "Selection-change event not available. Select a cell and click “Read Fill from Selection” instead.";
+      status.textContent = "Selection-change not available. Use 'Read Fill from Selection' instead.";
     }
   }
 
@@ -290,33 +323,24 @@
     const eyedropperScreenBtn = document.getElementById("eyedropperScreenBtn");
     const eyedropperCellBtn = document.getElementById("eyedropperCellBtn");
 
-    colorInput.addEventListener("input", () => {
-      hexInput.value = colorInput.value.toUpperCase();
-    });
+    colorInput.addEventListener("input", () => { hexInput.value = colorInput.value.toUpperCase(); });
     hexInput.addEventListener("change", () => {
       const normalized = normalizeHex(hexInput.value);
-      if (normalized) {
-        colorInput.value = normalized.slice(0,7);
-        hexInput.value = normalized;
-      } else {
-        alert("Invalid hex color. Use formats: #RGB, #RRGGBB, or #RRGGBBAA.");
-        hexInput.value = colorInput.value.toUpperCase();
-      }
+      if (normalized) { colorInput.value = normalized.slice(0,7); hexInput.value = normalized; }
+      else { alert("Invalid hex color. Use #RGB, #RRGGBB, or #RRGGBBAA."); hexInput.value = colorInput.value.toUpperCase(); }
     });
     applyBtn.addEventListener("click", () => applyToSelection(hexInput.value));
     getFillBtn.addEventListener("click", readFillFromSelection);
     getFontBtn.addEventListener("click", readFontFromSelection);
     clearBtn.addEventListener("click", clearFillFont);
-
     eyedropperScreenBtn.addEventListener("click", eyedropperScreen);
     eyedropperCellBtn.addEventListener("click", eyedropperCell);
-
-    renderTheme();
-    renderRecents();
-    renderStandard();
   }
 
-  Office.onReady(() => {
+  Office.onReady(async () => {
     wireUi();
+    renderTheme();
+    renderStandard();
+    await getRecentColors();
   });
 })();
