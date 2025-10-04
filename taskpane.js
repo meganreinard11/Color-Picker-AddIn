@@ -7,13 +7,17 @@
   ];
 
   const SETTINGS_SHEET = "_Settings";
-  const RECENT_COLUMN = "B";
+  const VALUE_COLUMN = "B";
+	
+  const ENVIRONMENT_START = 4;
+  let environment = 
+	  
   const RECENT_START = 5;
   const RECENT_END = 23;
-  const recentRngNm = RECENT_COLUMN + RECENT_START + ":" + RECENT_COLUMN + RECENT_END;
+  const RECENT_RANGE = VALUE_COLUMN + RECENT_START + ":" + VALUE_COLUMN + RECENT_END;
   const RECENT_LIMIT = RECENT_END - RECENT_START;
-	
   let recentCache = [];
+
 
   function normalizeHex(value) {
     if (!value) return null;
@@ -28,9 +32,7 @@
       }
     }
     if (v[0] !== "#") v = "#"+v;
-    if (/^#([0-9A-Fa-f]{3})$/.test(v)) {
-      v = "#"+v.slice(1).split("").map(ch => ch+ch).join("");
-    }
+    if (/^#([0-9A-Fa-f]{3})$/.test(v)) v = "#"+v.slice(1).split("").map(ch => ch+ch).join("");
     if (/^#([0-9A-Fa-f]{6})$/.test(v)) return v.toUpperCase();
     if (/^#([0-9A-Fa-f]{8})$/.test(v)) return v.toUpperCase();
     return null;
@@ -50,7 +52,7 @@
     if (sheet.isNullObject) {
       sheet = context.workbook.worksheets.add(SETTINGS_SHEET);
       sheet.visibility = "Hidden";
-      const r = sheet.getRange(recentRngNm);
+      const r = sheet.getRange(RECENT_RANGE);
       r.numberFormat = "@";
     }
     return sheet;
@@ -59,7 +61,7 @@
   async function getRecentColors() {
     return Excel.run(async (context) => {
       const sheet = await ensureStoreSheet(context);
-      const rng = sheet.getRange(recentRngNm);
+      const rng = sheet.getRange(RECENT_RANGE);
       rng.load("values");
       await context.sync();
       const list = (rng.values || [])
@@ -94,7 +96,7 @@
       const trimmed = uniq.slice(0, RECENT_LIMIT);
       const rows = [];
       for (let i = 0; i < RECENT_LIMIT; i++) rows.push([trimmed[i] || ""]);
-      const rng = sheet.getRange(recentRngNm);
+      const rng = sheet.getRange(RECENT_RANGE);
       rng.values = rows;
       rng.numberFormat = "@";
       await context.sync();
