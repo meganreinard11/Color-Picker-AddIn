@@ -6,9 +6,13 @@
     "#dd7e6b","#ea9999","#f9cb9c","#ffe599","#b6d7a8","#a2c4c9","#a4c2f4","#9fc5e8","#b4a7d6","#d5a6bd"
   ];
 
-  const STORE_SHEET = "_Settings";
-  const RECENT_LIMIT = 18;
-
+  const SETTINGS_SHEET = "_Settings";
+  const RECENT_COLUMN = "B";
+  const RECENT_START = 5;
+  const RECENT_END = 23;
+  const recentRngNm = RECENT_COLUMN + RECENT_START + ":" + RECENT_COLUMN + RECENT_END;
+  const RECENT_LIMIT = RECENT_END - RECENT_START;
+	
   let recentCache = [];
 
   function normalizeHex(value) {
@@ -40,13 +44,13 @@
   }
 
   async function ensureStoreSheet(context) {
-    let sheet = context.workbook.worksheets.getItemOrNullObject(STORE_SHEET);
+    let sheet = context.workbook.worksheets.getItemOrNullObject(SETTINGS_SHEET);
     sheet.load("name,isNullObject,visibility");
     await context.sync();
     if (sheet.isNullObject) {
-      sheet = context.workbook.worksheets.add(STORE_SHEET);
+      sheet = context.workbook.worksheets.add(SETTINGS_SHEET);
       sheet.visibility = "Hidden";
-      const r = sheet.getRange(`A1:A${RECENT_LIMIT}`);
+      const r = sheet.getRange(recentRngNm);
       r.numberFormat = "@";
     }
     return sheet;
@@ -55,7 +59,7 @@
   async function getRecentColors() {
     return Excel.run(async (context) => {
       const sheet = await ensureStoreSheet(context);
-      const rng = sheet.getRange(`A1:A${RECENT_LIMIT}`);
+      const rng = sheet.getRange(recentRngNm);
       rng.load("values");
       await context.sync();
       const list = (rng.values || [])
@@ -90,7 +94,7 @@
       const trimmed = uniq.slice(0, RECENT_LIMIT);
       const rows = [];
       for (let i = 0; i < RECENT_LIMIT; i++) rows.push([trimmed[i] || ""]);
-      const rng = sheet.getRange(`A1:A${RECENT_LIMIT}`);
+      const rng = sheet.getRange(recentRngNm);
       rng.values = rows;
       rng.numberFormat = "@";
       await context.sync();
