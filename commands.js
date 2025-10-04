@@ -4,8 +4,8 @@
     try {
       await Office.addin.showAsTaskpane();
       return true;
-    } catch (err) {
-      console.error(err);
+    } catch (e) {
+      console.error(e);
       return false;
     }
   }
@@ -18,8 +18,8 @@
         await context.sync();
       });
       return true;
-    } catch (err) {
-      console.error(err);
+    } catch (e) {
+      console.error(e);
       return false;
     }
   }
