@@ -214,7 +214,7 @@
   async function eyedropperScreen() {
     const status = document.getElementById("eyedropperStatus");
     if (!("EyeDropper" in window)) {
-      status.textContent = "Screen eyedropper not supported here. Use Eyedropper (Cell).";
+      status.textContent = "Screen eyedropper not supported. Use Eyedropper (Cell).";
       return;
     }
     try {
