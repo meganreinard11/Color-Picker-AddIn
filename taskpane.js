@@ -5,12 +5,6 @@
     "#e6b8af","#f4cccc","#fce5cd","#fff2cc","#d9ead3","#d0e0e3","#c9daf8","#cfe2f3","#d9d2e9","#ead1dc",
     "#dd7e6b","#ea9999","#f9cb9c","#ffe599","#b6d7a8","#a2c4c9","#a4c2f4","#9fc5e8","#b4a7d6","#d5a6bd"
   ];
-
-  const SETTINGS_SHEET = "_Settings";
-  const VALUE_COLUMN = "B";
-	
-  const ENVIRONMENT_START = 4;
-  let environment = 
 	  
   const RECENT_START = 5;
   const RECENT_END = 23;
