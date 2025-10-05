@@ -1,12 +1,12 @@
 
 (function () {
   async function showTaskpane() {
+    const env = await window.ErrorHandler.getEnvFlag();
     try {
       await Office.addin.showAsTaskpane();
       return true;
-    } catch (e) {
-      console.error(e);
-      return false;
+    } catch (err) {
+      return window.ErrorHandler.handle(err, { action: "showTaskpane", userMessage: err.message });
     }
   }
 
@@ -19,8 +19,7 @@
       });
       return true;
     } catch (e) {
-      console.error(e);
-      return false;
+      return window.ErrorHandler.handle(err, { action: "showTaskpane", userMessage: err.message });
     }
   }
 
