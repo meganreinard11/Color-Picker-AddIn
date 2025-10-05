@@ -7,7 +7,7 @@
  *
  * Exports:
  *   - getEnvFlag()
- *   - handleError(error, context?)   // <-- env removed
+ *   - handle(error, context?)
  *   - tryWrap(action, workFn(env), context?)
  */
 
@@ -80,7 +80,7 @@ async function tryWrap(action, workFn, context) {
   try {
     return await workFn(env); // you can still use env here if helpful
   } catch (err) {
-    await handleError(err, merge({ action: action }, context || {}));  // <-- no env passed
+    await handle(err, merge({ action: action }, context || {}));  // fixed: call the correct handler
     return undefined;
   }
 }
@@ -223,6 +223,8 @@ function merge(a, b) {
 
 // ESM / CommonJS / UMD-lite export
 var ErrorHandler = { getEnvFlag: getEnvFlag, handle: handle, tryWrap: tryWrap };
+// Back-compat alias so callers using handleError(...) keep working.
+ErrorHandler.handleError = handle;
 
 if (typeof module !== "undefined" && module.exports) {
   module.exports = ErrorHandler;            // CommonJS
