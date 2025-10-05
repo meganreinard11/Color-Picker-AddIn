@@ -1,4 +1,16 @@
 (function () {
+  const standardPalette = [
+    "#000000","#434343","#666666","#999999","#b7b7b7","#cccccc","#d9d9d9","#efefef","#f3f3f3","#ffffff",
+    "#980000","#ff0000","#ff9900","#ffff00","#00ff00","#00ffff","#4a86e8","#0000ff","#9900ff","#ff00ff",
+    "#e6b8af","#f4cccc","#fce5cd","#fff2cc","#d9ead3","#d0e0e3","#c9daf8","#cfe2f3","#d9d2e9","#ead1dc",
+    "#dd7e6b","#ea9999","#f9cb9c","#ffe599","#b6d7a8","#a2c4c9","#a4c2f4","#9fc5e8","#b4a7d6","#d5a6bd"
+  ];
+
+  const RECENT_START = 5;
+  const RECENT_END = 23;
+  const RECENT_LIMIT = RECENT_END - RECENT_START;
+  let recentCache = [];
+  
   /* ==== glue to errorHandler.js ==== */
   async function callHandleError(err, context) {
     try {
@@ -13,18 +25,6 @@
     try { alert(msg); } catch (_) {}
   }
   /* ================================= */
-
-  const standardPalette = [
-    "#000000","#434343","#666666","#999999","#b7b7b7","#cccccc","#d9d9d9","#efefef","#f3f3f3","#ffffff",
-    "#980000","#ff0000","#ff9900","#ffff00","#00ff00","#00ffff","#4a86e8","#0000ff","#9900ff","#ff00ff",
-    "#e6b8af","#f4cccc","#fce5cd","#fff2cc","#d9ead3","#d0e0e3","#c9daf8","#cfe2f3","#d9d2e9","#ead1dc",
-    "#dd7e6b","#ea9999","#f9cb9c","#ffe599","#b6d7a8","#a2c4c9","#a4c2f4","#9fc5e8","#b4a7d6","#d5a6bd"
-  ];
-
-  const RECENT_START = 5;
-  const RECENT_END = 23;
-  const RECENT_LIMIT = RECENT_END - RECENT_START;
-  let recentCache = [];
 
   function getRecentRngName() { return `B${RECENT_START}:B${RECENT_END}`; }
 
@@ -113,10 +113,7 @@
       renderRecentsFromArray(trimmed);
       return trimmed;
     }).catch(async (err) => {
-      await callHandleError(err, {
-        action: "SetRecentColors",
-        userMessage: "Couldn't save recent colors."
-      });
+      await callHandleError(err, { action: "SetRecentColors", userMessage: "Couldn't save recent colors." });
       return recentCache;
     });
   }
@@ -237,9 +234,7 @@
       }
       await context.sync();
     }).catch(async (err) => {
-      await callHandleError(err, {
-        action: "ApplyToSelection",
-        userMessage: "Couldn't apply the color to the selection.",
+      await callHandleError(err, { action: "ApplyToSelection", userMessage: "Couldn't apply the color to the selection.",
         data: { color, targets }
       });
     });
@@ -255,10 +250,7 @@
       if (c) setColorInputs(c);
       await pushRecentColor(c);
     }).catch(async (err) => {
-      await callHandleError(err, {
-        action: "ReadFillFromSelection",
-        userMessage: "Couldn't read the fill color from the selection."
-      });
+      await callHandleError(err, { action: "ReadFillFromSelection", userMessage: "Couldn't read the fill color from the selection." });
     });
   }
 
@@ -271,10 +263,7 @@
       if (c) setColorInputs(c);
       await pushRecentColor(c);
     }).catch(async (err) => {
-      await callHandleError(err, {
-        action: "ReadFontFromSelection",
-        userMessage: "Couldn't read the font color from the selection."
-      });
+      await callHandleError(err, { action: "ReadFontFromSelection", userMessage: "Couldn't read the font color from the selection." });
     });
   }
 
@@ -285,10 +274,7 @@
       range.format.font.color = null;
       await context.sync();
     }).catch(async (err) => {
-      await callHandleError(err, {
-        action: "ClearFillFont",
-        userMessage: "Couldn't clear fill and font."
-      });
+      await callHandleError(err, { action: "ClearFillFont", userMessage: "Couldn't clear fill and font." });
     });
   }
 
@@ -354,10 +340,7 @@
       });
     } catch (e) {
       status.textContent = "Selection-change not available. Use 'Read Fill from Selection' instead.";
-      await callHandleError(e, {
-        action: "EyedropperCell",
-        userMessage: "Selection-change isn't available in this context."
-      });
+      await callHandleError(e, { action: "EyedropperCell", userMessage: "Selection-change isn't available in this context." });
     }
   }
 
@@ -392,10 +375,7 @@
       renderStandard();
       await getRecentColors();
     } catch (err) {
-      await callHandleError(err, {
-        action: "InitColorPicker",
-        userMessage: "The color picker couldn't initialize."
-      });
+      await callHandleError(err, { action: "InitColorPicker", userMessage: "The color picker couldn't initialize." });
     }
   });
 })();
