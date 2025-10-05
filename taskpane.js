@@ -56,11 +56,11 @@
   }
 
   async function ensureStoreSheet(context) {
-    let sheet = context.workbook.worksheets.getItemOrNullObject(STORE_SHEET);
+    let sheet = context.workbook.worksheets.getItemOrNullObject(SETTINGS_SHEET);
     sheet.load("name,isNullObject,visibility");
     await context.sync();
     if (sheet.isNullObject) {
-      sheet = context.workbook.worksheets.add(STORE_SHEET);
+      sheet = context.workbook.worksheets.add(SETTINGS_SHEET);
       sheet.visibility = "Hidden";
       const r = sheet.getRange(getRecentRngName());
       r.numberFormat = "@";
