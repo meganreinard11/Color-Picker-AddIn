@@ -1,11 +1,26 @@
-
 (function () {
+  /** Safely delegate to our error handler (if present) */
+  async function safeHandle(err, context) {
+    try {
+      const EH =
+        (typeof window !== "undefined" && window.ErrorHandler)
+          ? window.ErrorHandler
+          : (typeof ErrorHandler !== "undefined" ? ErrorHandler : null);
+      if (EH && typeof EH.handle === "function") {
+        return EH.handle(err, context || {});
+      }
+    } catch (_) {}
+    console.error("[commands] error:", err);
+    try { alert((context && context.userMessage) || "Something went wrong."); } catch (_) {}
+    return false;
+  }
+
   async function showTaskpane() {
     try {
       await Office.addin.showAsTaskpane();
       return true;
     } catch (err) {
-      return window.ErrorHandler.handle(err, { action: "commands.showTaskpane", userMessage: "Couldn't show the task pane." });
+      return safeHandle(err, { action: "commands.showTaskpane", userMessage: "Couldn't show the task pane." });
     }
   }
 
@@ -17,8 +32,8 @@
         await context.sync();
       });
       return true;
-    } catch (e) {
-      return window.ErrorHandler.handle(err, { action: "commands.quickFillYellow", userMessage: "Couldn't fill the yellow." });
+    } catch (err) {
+      return safeHandle(err, { action: "commands.quickFillYellow", userMessage: "Couldn't apply the yellow fill." });
     }
   }
 
