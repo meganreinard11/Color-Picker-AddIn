@@ -24,13 +24,11 @@
     }
   }
 
-  async function quickFillYellow() {
+  function quickFillYellow() {
     try {
-      await Excel.run(async (context) => {
-        const range = context.workbook.getSelectedRange();
-        range.format.fill.color = "#FFF7AB";
-        await context.sync();
-      });
+      const context = Office.context, range = contex.workbook.getSelectedRange();
+      range.format.fill.color = "#FFF7AB";
+      await context.sync();
       return true;
     } catch (err) {
       return safeHandle(err, { action: "commands.quickFillYellow", userMessage: "Couldn't apply the yellow fill." });
