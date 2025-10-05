@@ -6,7 +6,7 @@
       await Office.addin.showAsTaskpane();
       return true;
     } catch (err) {
-      return window.ErrorHandler.handle(err, { action: "showTaskpane", userMessage: err.message });
+      return window.ErrorHandler.handle(err, { action: "commands.showTaskpane", userMessage: "Couldn't show the task pane." });
     }
   }
 
@@ -19,7 +19,7 @@
       });
       return true;
     } catch (e) {
-      return window.ErrorHandler.handle(err, { action: "showTaskpane", userMessage: err.message });
+      return window.ErrorHandler.handle(err, { action: "commands.quickFillYellow", userMessage: "Couldn't fill the yellow." });
     }
   }
 
