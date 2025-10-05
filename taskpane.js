@@ -12,7 +12,6 @@
   const RECENT_LIMIT = RECENT_END - RECENT_START;
   let recentCache = [];
 
-
   function normalizeHex(value) {
     if (!value) return null;
     let v = (""+value).trim();
@@ -71,6 +70,7 @@
       renderRecentsFromArray(uniq);
       return uniq;
     }).catch(e => {
+	  window
       console.warn("getRecentColors failed:", e);
       recentCache = [];
       renderRecentsFromArray([]);
@@ -190,13 +190,7 @@
     });
   }
 
-  function getTargets() {
-    return {
-      fill: document.getElementById("targetFill").checked,
-      font: document.getElementById("targetFont").checked,
-      borders: document.getElementById("targetBorders").checked,
-    };
-  }
+  function getTargets() { return { fill: document.getElementById("targetFill").checked, font: document.getElementById("targetFont").checked, borders: document.getElementById("targetBorders").checked }; }
 
   async function applyToSelection(hex) {
     const color = normalizeHex(hex);
