@@ -1,16 +1,32 @@
 (function () {
+  /* ==== glue to errorHandler.js ==== */
+  async function callHandleError(err, context) {
+    try {
+      const EH = (typeof window !== "undefined" && window.ErrorHandler) ? window.ErrorHandler : (typeof ErrorHandler !== "undefined" ? ErrorHandler : null);
+      if (EH && typeof EH.handleError === "function") {
+        await EH.handleError(err, context || {});
+        return;
+      }
+    } catch (_) { /* ignore and fall back */ }
+    console.error("[fallback error]", err);
+    const msg = (context && context.userMessage) ? context.userMessage : "Something went wrong. Please try again.";
+    try { alert(msg); } catch (_) {}
+  }
+  /* ================================= */
+
   const standardPalette = [
     "#000000","#434343","#666666","#999999","#b7b7b7","#cccccc","#d9d9d9","#efefef","#f3f3f3","#ffffff",
     "#980000","#ff0000","#ff9900","#ffff00","#00ff00","#00ffff","#4a86e8","#0000ff","#9900ff","#ff00ff",
     "#e6b8af","#f4cccc","#fce5cd","#fff2cc","#d9ead3","#d0e0e3","#c9daf8","#cfe2f3","#d9d2e9","#ead1dc",
     "#dd7e6b","#ea9999","#f9cb9c","#ffe599","#b6d7a8","#a2c4c9","#a4c2f4","#9fc5e8","#b4a7d6","#d5a6bd"
   ];
-	  
+
   const RECENT_START = 5;
   const RECENT_END = 23;
-  const RECENT_RANGE = VALUE_COLUMN + RECENT_START + ":" + VALUE_COLUMN + RECENT_END;
   const RECENT_LIMIT = RECENT_END - RECENT_START;
   let recentCache = [];
+
+  function getRecentRngName() { return `B${RECENT_START}:B${RECENT_END}`; }
 
   function normalizeHex(value) {
     if (!value) return null;
@@ -39,13 +55,13 @@
   }
 
   async function ensureStoreSheet(context) {
-    let sheet = context.workbook.worksheets.getItemOrNullObject(SETTINGS_SHEET);
+    let sheet = context.workbook.worksheets.getItemOrNullObject(STORE_SHEET);
     sheet.load("name,isNullObject,visibility");
     await context.sync();
     if (sheet.isNullObject) {
-      sheet = context.workbook.worksheets.add(SETTINGS_SHEET);
+      sheet = context.workbook.worksheets.add(STORE_SHEET);
       sheet.visibility = "Hidden";
-      const r = sheet.getRange(RECENT_RANGE);
+      const r = sheet.getRange(getRecentRngName());
       r.numberFormat = "@";
     }
     return sheet;
@@ -54,7 +70,7 @@
   async function getRecentColors() {
     return Excel.run(async (context) => {
       const sheet = await ensureStoreSheet(context);
-      const rng = sheet.getRange(RECENT_RANGE);
+      const rng = sheet.getRange(getRecentRngName());
       rng.load("values");
       await context.sync();
       const list = (rng.values || [])
@@ -69,9 +85,8 @@
       recentCache = uniq;
       renderRecentsFromArray(uniq);
       return uniq;
-    }).catch(e => {
-	  window
-      console.warn("getRecentColors failed:", e);
+    }).catch(async (err) => {
+      await callHandleError(err, { action: "GetRecentColors", userMessage: "Couldn't load recent colors." });
       recentCache = [];
       renderRecentsFromArray([]);
       return [];
@@ -90,15 +105,18 @@
       const trimmed = uniq.slice(0, RECENT_LIMIT);
       const rows = [];
       for (let i = 0; i < RECENT_LIMIT; i++) rows.push([trimmed[i] || ""]);
-      const rng = sheet.getRange(RECENT_RANGE);
+      const rng = sheet.getRange(getRecentRngName());
       rng.values = rows;
       rng.numberFormat = "@";
       await context.sync();
       recentCache = trimmed;
       renderRecentsFromArray(trimmed);
       return trimmed;
-    }).catch(e => {
-      console.error("setRecentColors failed:", e);
+    }).catch(async (err) => {
+      await callHandleError(err, {
+        action: "SetRecentColors",
+        userMessage: "Couldn't save recent colors."
+      });
       return recentCache;
     });
   }
@@ -126,7 +144,7 @@
         });
         if (list.length) return list;
       }
-    } catch (e) { console.warn("Theme read failed:", e); }
+    } catch (e) {}
     return null;
   }
 
@@ -190,19 +208,19 @@
     });
   }
 
-  function getTargets() { return { fill: document.getElementById("targetFill").checked, font: document.getElementById("targetFont").checked, borders: document.getElementById("targetBorders").checked }; }
+  function getTargets() {
+    return {
+      fill: document.getElementById("targetFill").checked,
+      font: document.getElementById("targetFont").checked,
+      borders: document.getElementById("targetBorders").checked,
+    };
+  }
 
   async function applyToSelection(hex) {
     const color = normalizeHex(hex);
-    if (!color) { 
-		alert("Enter a valid hex color like #FFAA33");
-		return;
-	}
+    if (!color) { alert("Enter a valid hex color like #FFAA33"); return; }
     const targets = getTargets();
-    if (!targets.fill && !targets.font && !targets.borders) {
-		alert("Choose at least one target (Fill, Font, Borders)."); 
-		return; 
-	}
+    if (!targets.fill && !targets.font && !targets.borders) { alert("Choose at least one target."); return; }
     await Excel.run(async (context) => {
       const range = context.workbook.getSelectedRange();
       range.load(["address"]);
@@ -218,8 +236,13 @@
         });
       }
       await context.sync();
-    }).catch(e => {
-		alert("Excel API error: " + e));
+    }).catch(async (err) => {
+      await callHandleError(err, {
+        action: "ApplyToSelection",
+        userMessage: "Couldn't apply the color to the selection.",
+        data: { color, targets }
+      });
+    });
     await pushRecentColor(color);
   }
 
@@ -231,7 +254,12 @@
       const c = range.format.fill.color;
       if (c) setColorInputs(c);
       await pushRecentColor(c);
-    }).catch(e => alert("Excel API error: " + e));
+    }).catch(async (err) => {
+      await callHandleError(err, {
+        action: "ReadFillFromSelection",
+        userMessage: "Couldn't read the fill color from the selection."
+      });
+    });
   }
 
   async function readFontFromSelection() {
@@ -242,7 +270,12 @@
       const c = range.format.font.color;
       if (c) setColorInputs(c);
       await pushRecentColor(c);
-    }).catch(e => alert("Excel API error: " + e));
+    }).catch(async (err) => {
+      await callHandleError(err, {
+        action: "ReadFontFromSelection",
+        userMessage: "Couldn't read the font color from the selection."
+      });
+    });
   }
 
   async function clearFillFont() {
@@ -251,7 +284,12 @@
       range.format.fill.clear();
       range.format.font.color = null;
       await context.sync();
-    }).catch(e => alert("Excel API error: " + e));
+    }).catch(async (err) => {
+      await callHandleError(err, {
+        action: "ClearFillFont",
+        userMessage: "Couldn't clear fill and font."
+      });
+    });
   }
 
   async function eyedropperScreen() {
@@ -266,7 +304,16 @@
         await pushRecentColor(result.sRGBHex);
         status.textContent = "Picked " + result.sRGBHex.toUpperCase();
       } else { status.textContent = ""; }
-    } catch (e) { status.textContent = ""; }
+    } catch (e) {
+      // Ignore user cancel; report real errors.
+      if (!(e && e.name === "AbortError")) {
+        await callHandleError(e, {
+          action: "EyedropperScreen",
+          userMessage: "Couldn't pick a color from the screen."
+        });
+      }
+      status.textContent = "";
+    }
   }
 
   let cellSampleHandler = null;
@@ -294,6 +341,11 @@
                 if (statusEl) statusEl.textContent = "No fill on that cell.";
               }
             });
+          } catch (err) {
+            await callHandleError(err, {
+              action: "EyedropperCell.Sample",
+              userMessage: "Couldn't sample the cell's fill color."
+            });
           } finally {
             try { sheet.onSelectionChanged.remove(cellSampleHandler); } catch {}
             cellSampleHandler = null;
@@ -302,6 +354,10 @@
       });
     } catch (e) {
       status.textContent = "Selection-change not available. Use 'Read Fill from Selection' instead.";
+      await callHandleError(e, {
+        action: "EyedropperCell",
+        userMessage: "Selection-change isn't available in this context."
+      });
     }
   }
 
@@ -330,9 +386,16 @@
   }
 
   Office.onReady(async () => {
-    wireUi();
-    renderTheme();
-    renderStandard();
-    await getRecentColors();
+    try {
+      wireUi();
+      renderTheme();
+      renderStandard();
+      await getRecentColors();
+    } catch (err) {
+      await callHandleError(err, {
+        action: "InitColorPicker",
+        userMessage: "The color picker couldn't initialize."
+      });
+    }
   });
 })();
