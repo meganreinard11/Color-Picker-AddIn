@@ -1,17 +1,48 @@
-(function () { 
-  const SETTINGS_SHEET = "_Settings";
-  const SETTINGS_FLAG_RANGE = "B4";
-  const DIAG_SHEET = "_Diagnostics";
-  const DIAG_TABLE_NAME = "ErrorLog";
-  var DIAG_HEADERS = [
-    "Timestamp",
-    "Action",
-    "Message",
-    "Code",
-    "Location",
-    "Statement",
-    "Stack"
-  ];
+/* eslint-disable no-console */
+"use strict";
+
+/**
+ * Env-driven error handling for Excel add-ins.
+ * Decision source: _Settings!B4 (TRUE => dev/advanced; FALSE => production).
+ *
+ * Exports:
+ *   - getEnvFlag()
+ *   - handleError(error, context?)   // <-- env removed
+ *   - tryWrap(action, workFn(env), context?)
+ */
+
+var SETTINGS_SHEET = "_Settings";
+var SETTINGS_FLAG_RANGE = "B4";
+var DIAG_SHEET = "_Diagnostics";
+var DIAG_TABLE_NAME = "ErrorLog";
+var DIAG_HEADERS = ["Timestamp","Action","Message","Code","Location","Statement","Stack"];
+
+/**
+ * Main handler. Chooses dev/prod behavior based on _Settings!B4.
+ * context: { action?, data?, userMessage?, logToSheet?, forceLogToSheet? }
+ * NOTE: This function calls Excel.run internally to read the env (and to log diagnostics),
+ * so it's best to call it OUTSIDE any active Excel.run block if possible.
+ */
+async function handle(err, context) {
+  context = context || {};
+  var offErr = toOfficeError(err);
+  var safeMessage = typeof context.userMessage === "string" ? context.userMessage : "Something went wrong. Please try again.";.
+  console.error("[" + (context.action || "Operation") + "] " + (offErr.message || "Error"), offErr);
+  var env = await getEnvFlag();
+  if (env && env.debug) {
+    logVerbose(offErr, context); // Verbose console diagnostics.
+    var doSheetLog = (typeof context.logToSheet === "boolean") ? context.logToSheet : true; // In dev, default to also logging in a hidden sheet.
+    if (doSheetLog) {
+      try { await appendDiagnostics(offErr, context); }
+      catch (e) { console.warn("[diagnostics] Unable to write to diagnostics sheet.", e); }
+    }
+    try { alert(buildDevAlert(offErr, context)); } catch (_) {} // Quick visible alert (details live in console/diagnostics).
+  } else {
+    try { alert(safeMessage); } catch (_) {} // Production: show friendly message only.
+    if (context.forceLogToSheet) { try { await appendDiagnostics(offErr, context); } catch (_) {} }
+  }
+  return false;
+}
 
 /** Reads _Settings!B4 and returns { debug: boolean }. Missing sheet/cell => { debug:false }. */
 async function getEnvFlag() {
@@ -41,44 +72,15 @@ async function getEnvFlag() {
 }
 
 /**
- * Main handler. Chooses dev/prod behavior based on env.debug.
- * context: { action?, data?, userMessage?, logToSheet?, forceLogToSheet? }
- */
-async function handleError(err, env, context) {
-  context = context || {};
-  var offErr = toOfficeError(err);
-  var safeMessage = typeof context.userMessage === "string" ? context.userMessage : "Something went wrong. Please try again.";
-  // Always log a concise line.
-  console.error("[" + (context.action || "Operation") + "] " + (offErr.message || "Error"), offErr);
-  if (env && env.debug) {
-    logVerbose(offErr, context); // Verbose console diagnostics.
-    // In dev, default to also logging in a hidden sheet.
-    var doSheetLog = (typeof context.logToSheet === "boolean") ? context.logToSheet : true;
-    if (doSheetLog) {
-      try { await appendDiagnostics(offErr, context); }
-      catch (e) { console.warn("[diagnostics] Unable to write to diagnostics sheet.", e); }
-    }
-    // Quick visible alert (details live in console/diagnostics).
-    try { alert(buildDevAlert(offErr, context)); } catch (_) {}
-  } else {
-    // Production: show friendly message only.
-    try { alert(safeMessage); } catch (_) {}
-    if (context.forceLogToSheet) {
-      try { await appendDiagnostics(offErr, context); } catch (_) {}
-    }
-  }
-}
-
-/**
- * Convenience wrapper: runs an async block and applies the handler on failure,
- * with env determined from _Settings!B4 automatically.
+ * Convenience wrapper: runs an async block and applies the handler on failure.
+ * Still reads env up-front so your workFn can branch behavior if needed.
  */
 async function tryWrap(action, workFn, context) {
   var env = await getEnvFlag();
   try {
-    return await workFn(env);
+    return await workFn(env); // you can still use env here if helpful
   } catch (err) {
-    await handleError(err, env, merge({ action: action }, context || {}));
+    await handleError(err, merge({ action: action }, context || {}));  // <-- no env passed
     return undefined;
   }
 }
@@ -208,9 +210,7 @@ function firstLine(s) {
   return i >= 0 ? s.slice(0, i) : s;
 }
 
-function truncate(s, max) {
-  return s.length > max ? s.slice(0, max - 1) + "…" : s;
-}
+function truncate(s, max) { return s.length > max ? s.slice(0, max - 1) + "…" : s; }
 
 function merge(a, b) {
   var out = {};
@@ -218,11 +218,16 @@ function merge(a, b) {
   Object.keys(b || {}).forEach(function (k) { out[k] = b[k]; });
   return out;
 }
-  
-Office.onReady(async () => {
-    wireUi();
-    renderTheme();
-    renderStandard();
-    await getRecentColors();
-  });
-})();
+
+/* ------------------------ exports ------------------------ */
+
+// ESM / CommonJS / UMD-lite export
+var ErrorHandler = { getEnvFlag: getEnvFlag, handle: handle, tryWrap: tryWrap };
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = ErrorHandler;            // CommonJS
+} else if (typeof window !== "undefined") {
+  window.ErrorHandler = ErrorHandler;       // Browser global (script tag)
+} else if (typeof self !== "undefined") {
+  self.ErrorHandler = ErrorHandler;         // WebWorker/globalThis
+}
