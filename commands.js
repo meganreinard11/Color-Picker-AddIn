@@ -1,7 +1,6 @@
 
 (function () {
   async function showTaskpane() {
-    const env = await window.ErrorHandler.getEnvFlag();
     try {
       await Office.addin.showAsTaskpane();
       return true;
