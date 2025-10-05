@@ -20,10 +20,11 @@
         await EH.handleError(err, context || {});
         return;
       }
-    } catch (_) { /* ignore and fall back */ }
-    console.error("[fallback error]", err);
-    const msg = (context && context.userMessage) ? context.userMessage : "Something went wrong. Please try again.";
-    try { alert(msg); } catch (_) {}
+    } catch (err) {
+      console.error("[fallback error]", err);
+      const msg = (context && context.userMessage) ? context.userMessage : "Something went wrong. Please try again.";
+      try { alert(msg); } catch (_) {}
+    }
   }
   /* ================================= */
 
