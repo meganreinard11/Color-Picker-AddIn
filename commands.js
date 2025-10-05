@@ -15,38 +15,36 @@
     return false;
   }
 
-  /* ================= Auto-open task pane when a specific cell is selected ================
+  /* ================= Auto-open/close task pane based on selection ========================
      Configure either a named range (recommended) or a fallback sheet+address.
-     Create a Named Range in the workbook called "OpenColorPickerCell" that refers to the target cell.
-     Or change TRIGGER.fallback below.
+     Create a Named Range:  OpenColorPickerCell  -> points to the hot cell (e.g., Sheet1!$B$2)
   ========================================================================================= */
   const TRIGGER = {
-    name: "PrimaryColor",                       // named range to watch (preferred)
-    fallback: { sheet: "Overview", address: "B19" }       // used only if the name doesn't exist
+    name: "PrimaryColor",                // workbook-scoped name (preferred)
+    fallback: { sheet: "Overview", address: "B19" } // used only if the name doesn't exist
   };
 
+  let _paneOpenedByTrigger = false;
   let _autoOpenDebounceAt = 0;
 
-  function addressesMatch(selectionAddr, targetAddr) {
-    if (!selectionAddr || !targetAddr) return false;
-    const norm = s => s.toUpperCase().replace(/\$+/g, "");
-    const s = norm(selectionAddr);
-    const t = norm(targetAddr);
-    // Normalize single-cell forms: "Sheet!B2" vs "Sheet!B2:B2"
-    const tSingle = t.includes(":") ? t : (t + ":" + t);
-    const sSingle = s.includes(":") ? s : (s + ":" + s);
-    return s === t || s === tSingle || sSingle === t || sSingle === tSingle;
+  function upperNoDollarQuotes(s) {
+    return (s || "").toString().toUpperCase().replace(/'/g, "").replace(/\$+/g, "");
+  }
+
+  function stripSheetPrefix(addr) {
+    // Converts "Sheet!A1" or "'Sheet Name'!$A$1" -> "A1"
+    const m = /^([^!]+)!(.+)$/.exec(addr);
+    return m ? m[2] : addr;
   }
 
   async function resolveTriggerAddress(ctx) {
-    // Try named item first
-    
+    // Try named item first (workbook-scoped)
     if (TRIGGER.name) {
       const ni = ctx.workbook.names.getItemOrNullObject(TRIGGER.name);
       ni.load(["name", "referenceAddress", "isNullObject"]);
       await ctx.sync();
       if (!ni.isNullObject && ni.referenceAddress) {
-        return ni.referenceAddress;
+        return ni.referenceAddress; // e.g., "Sheet1!$B$2"
       }
     }
     // Fallback to explicit sheet+address
@@ -56,62 +54,101 @@
     return null;
   }
 
-  async function _handleSelectionChanged(args) {
+  async function selectionIntersectsTarget(event) {
+    // Uses event.address and event.worksheetId to test intersection with the target cell.
+    return Excel.run(async (ctx) => {
+      const targetAddrFull = await resolveTriggerAddress(ctx);
+      if (!targetAddrFull) return false;
+
+      const eventAddrFull = event.address; // already includes sheet
+      if (!eventAddrFull) return false;
+
+      // If sheets differ, there's no intersection.
+      const eventSheetPart = upperNoDollarQuotes(eventAddrFull.split("!")[0]);
+      const targetSheetPart = upperNoDollarQuotes(targetAddrFull.split("!")[0]);
+      if (eventSheetPart !== targetSheetPart) return false;
+
+      const ws = ctx.workbook.worksheets.getItemOrNullObject(event.worksheetId || eventSheetPart);
+      ws.load(["name", "id", "isNullObject"]);
+      await ctx.sync();
+      if (ws.isNullObject) return false;
+
+      const selNoSheet = stripSheetPrefix(eventAddrFull);
+      const tgtNoSheet = stripSheetPrefix(targetAddrFull);
+
+      const selection = ws.getRange(selNoSheet);
+      const target = ws.getRange(tgtNoSheet);
+      const inter = selection.getIntersectionOrNullObject(target);
+      inter.load("address");
+      await ctx.sync();
+      return !inter.isNullObject;
+    }).catch((_e) => false);
+  }
+
+  async function handleSelectionChanged(event) {
     try {
       const now = Date.now();
-      if (now - _autoOpenDebounceAt < 750) return; // avoid repeated opens while user is nudging selection
-      await Excel.run(async (ctx) => {
-        // Selected range address (fully-qualified with sheet)
-        const sel = ctx.workbook.getSelectedRange();
-        sel.load("address");
-        await ctx.sync();
-        const selectedAddress = sel.address; // e.g., 'Sheet1!B2' or 'Sheet1!B2:B2'
+      const intersects = await selectionIntersectsTarget(event);
 
-        // Target to compare
-        const targetAddress = await resolveTriggerAddress(ctx);
-        if (!targetAddress) return;
-
-        if (addressesMatch(selectedAddress, targetAddress)) {
+      if (intersects) {
+        // Debounce opens to avoid repeated UI churn while user nudges selection
+        if (now - _autoOpenDebounceAt >= 400) {
           await Office.addin.showAsTaskpane();
           _autoOpenDebounceAt = now;
         }
-      });
+        _paneOpenedByTrigger = true;
+      } else if (_paneOpenedByTrigger) {
+        // We previously opened it due to the trigger; close now that we've exited
+        try { await Office.addin.hide(); } catch (e) { /* ignore */ }
+        _paneOpenedByTrigger = false;
+      }
     } catch (err) {
-      safeHandle(err, { action: "autoOpen.onSelectionChanged", userMessage: "Couldn't handle selection-change auto-open." });
+      safeHandle(err, { action: "autoOpenClose.onSelectionChanged", userMessage: "Couldn't auto-open/close the task pane." });
     }
   }
 
-  let _selectionHandlers = []; // keep EventHandlerResult objects per-worksheet so we could remove later if needed
-
-  async function registerAutoOpenOnSelection() {
+  // Register the best-available selection event (WorksheetCollection > fallback per-sheet)
+  async function registerSelectionListener() {
     try {
       await Excel.run(async (ctx) => {
-        const sheets = ctx.workbook.worksheets;
-        sheets.load("items/name");
-        await ctx.sync();
+        const coll = ctx.workbook.worksheets;
+        // Prefer the collection-level event (ExcelApi 1.9). It fires for any sheet.
+        if (coll.onSelectionChanged && typeof coll.onSelectionChanged.add === "function") {
+          coll.onSelectionChanged.add(handleSelectionChanged);
+          await ctx.sync();
+          return;
+        }
 
-        // Register on every current sheet (simple & reliable). We keep results in _selectionHandlers.
-        for (const ws of sheets.items) {
-          const result = ws.onSelectionChanged.add(_handleSelectionChanged);
-          _selectionHandlers.push(result);
+        // Fallback: attach to each worksheet individually.
+        coll.load("items/name");
+        await ctx.sync();
+        for (const ws of coll.items) {
+          ws.onSelectionChanged.add(handleSelectionChanged);
         }
         await ctx.sync();
       });
     } catch (err) {
-      safeHandle(err, { action: "autoOpen.register", userMessage: "Couldn't register selection-change listener." });
+      safeHandle(err, { action: "registerSelectionListener", userMessage: "Couldn't register selection-change listener." });
     }
   }
-  /* ====================================================================================== */
 
-  async function showTaskpane() {
+  // LaunchEvent handler so the shared runtime initializes at workbook open.
+  async function onDocumentOpened(event) {
     try {
-      await Office.addin.showAsTaskpane();
-      return true;
+      // Nothing critical here; Office.onReady will wire the listeners.
+      // If you'd like, we could check the current selection and open immediately.
     } catch (err) {
-      return safeHandle(err, { action: "commands.showTaskpane", userMessage: "Couldn't show the task pane." });
+      safeHandle(err, { action: "onDocumentOpened", userMessage: "Startup failed." });
+    } finally {
+      try { event.completed(); } catch (_) {}
     }
   }
 
+  // Optional: legacy buttons still work in shared runtime; keep these if needed elsewhere.
+  async function showTaskpane() {
+    try { await Office.addin.showAsTaskpane(); }
+    catch (err) { return safeHandle(err, { action: "commands.showTaskpane", userMessage: "Couldn't show the task pane." }); }
+  }
   async function quickFillYellow() {
     try {
       await Excel.run(async (context) => {
@@ -125,14 +162,15 @@
     }
   }
 
-  // Associate functions and register selection listener (shared runtime page)
+  // Wire everything once Excel is ready
   Office.onReady(() => {
     try {
+      registerSelectionListener();
+      Office.actions.associate("onDocumentOpened", onDocumentOpened);
       Office.actions.associate("showTaskpane", showTaskpane);
       Office.actions.associate("quickFillYellow", quickFillYellow);
-      registerAutoOpenOnSelection();
     } catch (err) {
-      safeHandle(err, { action: "commands.associate", userMessage: "Couldn't wire ribbon actions." });
+      safeHandle(err, { action: "commands.associate", userMessage: "Couldn't initialize the add-in." });
     }
   });
 })();
