@@ -181,7 +181,7 @@ async function appendDiagnostics(e, context) {
     }
     // Build row payload
     var row = [
-      new Date().toISOString(),
+      getTimestamp(),
       context.action || "",
       firstLine(e.message || ""),
       e.code || "",
@@ -217,6 +217,27 @@ function merge(a, b) {
   Object.keys(a || {}).forEach(function (k) { out[k] = a[k]; });
   Object.keys(b || {}).forEach(function (k) { out[k] = b[k]; });
   return out;
+}
+
+function getTimestamp() {
+	var d = new Date(), nd = new Date(((d.getTime() + (d.getTimezoneOffset() * 60 * 1000)) + (60 * 60 * 1000 * getEstOffset())));
+	return nd.toString();
+}
+
+// Get time zone offset for NY, USA
+function getEstOffset () {
+    const stdTimezoneOffset = () => {
+        var jan = new Date(0, 1)
+        var jul = new Date(6, 1)
+        return Math.max(jan.getTimezoneOffset(), jul.getTimezoneOffset())
+    }
+    var today = new Date()
+    const isDstObserved = (today: Date) => { return today.getTimezoneOffset() < stdTimezoneOffset() }
+    if (isDstObserved(today)) {
+        return -4
+    } else {
+        return -5
+    }
 }
 
 /* ------------------------ exports ------------------------ */
