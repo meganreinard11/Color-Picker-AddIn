@@ -21,7 +21,7 @@
      Or change TRIGGER.fallback below.
   ========================================================================================= */
   const TRIGGER = {
-    name: "OpenColorPickerCell",                       // named range to watch (preferred)
+    name: "PrimaryColor",                       // named range to watch (preferred)
     fallback: { sheet: "Overview", address: "B19" }       // used only if the name doesn't exist
   };
 
@@ -40,6 +40,7 @@
 
   async function resolveTriggerAddress(ctx) {
     // Try named item first
+    
     if (TRIGGER.name) {
       const ni = ctx.workbook.names.getItemOrNullObject(TRIGGER.name);
       ni.load(["name", "referenceAddress", "isNullObject"]);
