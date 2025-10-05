@@ -8,23 +8,29 @@
 
   const RECENT_START = 5;
   const RECENT_END = 23;
-  const RECENT_LIMIT = RECENT_END - RECENT_START;
+  const RECENT_LIMIT = RECENT_END - RECENT_START; // inclusive range
   
   let recentCache = [];
   
   /* ==== glue to errorHandler.js ==== */
   async function callHandleError(err, context) {
     try {
-      const EH = (typeof window !== "undefined" && window.ErrorHandler) ? window.ErrorHandler : (typeof ErrorHandler !== "undefined" ? ErrorHandler : null);
-      if (EH && typeof EH.handleError === "function") {
-        await EH.handleError(err, context || {});
+      const EH = (typeof window !== "undefined" && window.ErrorHandler)
+        ? window.ErrorHandler
+        : (typeof ErrorHandler !== "undefined" ? ErrorHandler : null);
+      if (EH && typeof EH.handle === "function") {
+        await EH.handle(err, context || {});
         return;
       }
-    } catch (err) {
-      console.error("[fallback error]", err);
-      const msg = (context && context.userMessage) ? context.userMessage : "Something went wrong. Please try again.";
-      try { alert(msg); } catch (_) {}
+      if (EH && typeof EH.handle === "function") { // back-compat
+        await EH.handle(err, context || {});
+        return;
+      }
+    } catch (inner) {
+      console.error("[fallback error]", inner);
     }
+    const msg = (context && context.userMessage) ? context.userMessage : "Something went wrong. Please try again.";
+    try { alert(msg); } catch (_) {}
   }
   /* ================================= */
 
@@ -52,17 +58,26 @@
   function setColorInputs(hex) {
     const norm = normalizeHex(hex);
     if (!norm) return;
-    document.getElementById("colorInput").value = norm.slice(0,7);
-    document.getElementById("hexInput").value = norm;
+    const colorEl = document.getElementById("colorInput");
+    const hexEl = document.getElementById("hexInput");
+    if (colorEl) colorEl.value = norm.slice(0,7);
+    if (hexEl) hexEl.value = norm;
   }
 
   async function ensureStoreSheet(context) {
-    let sheet = context.workbook.worksheets.getItemOrNullObject(SETTINGS_SHEET);
+    const SETTINGS_SHEET_NAME = (typeof window !== "undefined" && typeof SETTINGS_SHEET === "string")
+      ? SETTINGS_SHEET
+      : "_Settings";
+    let sheet = context.workbook.worksheets.getItemOrNullObject(SETTINGS_SHEET_NAME);
     sheet.load("name,isNullObject,visibility");
     await context.sync();
     if (sheet.isNullObject) {
-      sheet = context.workbook.worksheets.add(SETTINGS_SHEET);
-      sheet.visibility = "Hidden";
+      sheet = context.workbook.worksheets.add(SETTINGS_SHEET_NAME);
+      try {
+        sheet.visibility = Excel.SheetVisibility.hidden;
+      } catch (_) {
+        try { sheet.visibility = "Hidden"; } catch (_) {}
+      }
       const r = sheet.getRange(getRecentRngName());
       r.numberFormat = "@";
     }
@@ -222,16 +237,15 @@
     if (!targets.fill && !targets.font && !targets.borders) { alert("Choose at least one target."); return; }
     await Excel.run(async (context) => {
       const range = context.workbook.getSelectedRange();
-      range.load(["address"]);
-      await context.sync();
       if (targets.fill)  range.format.fill.color = color;
       if (targets.font)  range.format.font.color = color;
       if (targets.borders) {
         const edges = ["EdgeTop","EdgeBottom","EdgeLeft","EdgeRight"];
         edges.forEach(e => {
-          range.format.borders.getItem(e).color = color;
-          range.format.borders.getItem(e).style = "Continuous";
-          range.format.borders.getItem(e).weight = "Medium";
+          const b = range.format.borders.getItem(e);
+          b.color = color;
+          b.style = "Continuous";
+          b.weight = "Medium";
         });
       }
       await context.sync();
@@ -280,39 +294,25 @@
     });
   }
 
-  async function eyedropperScreen() {
-    const status = document.getElementById("eyedropperStatus");
-    if (!("EyeDropper" in window)) { status.textContent = "Screen eyedropper not supported here. Use Eyedropper (Cell)."; return; }
-    try {
-      status.textContent = "Pick a pixel…";
-      const dropper = new window.EyeDropper();
-      const result = await dropper.open();
-      if (result && result.sRGBHex) {
-        setColorInputs(result.sRGBHex);
-        await pushRecentColor(result.sRGBHex);
-        status.textContent = "Picked " + result.sRGBHex.toUpperCase();
-      } else { status.textContent = ""; }
-    } catch (e) {
-      // Ignore user cancel; report real errors.
-      if (!(e && e.name === "AbortError")) {
-        await callHandleError(e, {
-          action: "EyedropperScreen",
-          userMessage: "Couldn't pick a color from the screen."
-        });
-      }
-      status.textContent = "";
-    }
-  }
-
-  let cellSampleHandler = null;
+  // Selection "eyedropper" implemented via onSelectionChanged
+  let cellSampleEvent = null; // Excel.EventHandlerResult | null
   async function eyedropperCell() {
     const status = document.getElementById("eyedropperStatus");
     status.textContent = "Click a cell to sample its fill…";
     try {
       await Excel.run(async (context) => {
         const sheet = context.workbook.worksheets.getActiveWorksheet();
-        if (cellSampleHandler) { try { sheet.onSelectionChanged.remove(cellSampleHandler); } catch {} cellSampleHandler = null; }
-        cellSampleHandler = sheet.onSelectionChanged.add(async (_evt) => {
+
+        // If already listening, remove first (using the original context).
+        if (cellSampleEvent) {
+          await Excel.run(cellSampleEvent.context, async (ctx) => {
+            cellSampleEvent.remove();
+            await ctx.sync();
+          }).catch(() => {});
+          cellSampleEvent = null;
+        }
+
+        const handler = async (_evt) => {
           try {
             await Excel.run(async (innerContext) => {
               const r = innerContext.workbook.getSelectedRange();
@@ -335,14 +335,49 @@
               userMessage: "Couldn't sample the cell's fill color."
             });
           } finally {
-            try { sheet.onSelectionChanged.remove(cellSampleHandler); } catch {}
-            cellSampleHandler = null;
+            // Remove handler after the first sample.
+            if (cellSampleEvent) {
+              try {
+                await Excel.run(cellSampleEvent.context, async (ctx) => {
+                  cellSampleEvent.remove();
+                  await ctx.sync();
+                });
+              } catch {_} finally { cellSampleEvent = null; }
+            }
           }
-        });
+        };
+
+        // Register and keep the EventHandlerResult so we can remove later.
+        cellSampleEvent = sheet.onSelectionChanged.add(handler);
+        await context.sync();
       });
     } catch (e) {
       status.textContent = "Selection-change not available. Use 'Read Fill from Selection' instead.";
       await callHandleError(e, { action: "EyedropperCell", userMessage: "Selection-change isn't available in this context." });
+    }
+  }
+
+  async function eyedropperScreen() {
+    const status = document.getElementById("eyedropperStatus");
+    if (!("EyeDropper" in window)) { status.textContent = "Screen eyedropper not supported here. Use Eyedropper (Cell)."; return; }
+    try {
+      status.textContent = "Pick a pixel…";
+      const dropper = new window.EyeDropper();
+      const result = await dropper.open();
+      if (result && result.sRGBHex) {
+        setColorInputs(result.sRGBHex);
+        await pushRecentColor(result.sRGBHex);
+        status.textContent = "Picked " + result.sRGBHex.toUpperCase();
+      } else { status.textContent = ""; }
+    } catch (e) {
+      // Ignore user cancel; report real errors.
+      if (!(e && e.name === "AbortError")) {
+        await callHandleError(e, {
+          action: "EyedropperScreen",
+          userMessage: "Couldn't pick a color from the screen."
+        });
+      }
+      status.textContent = "";
     }
   }
 
