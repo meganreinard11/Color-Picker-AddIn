@@ -22,7 +22,7 @@
   ========================================================================================= */
   const TRIGGER = {
     name: "OpenColorPickerCell",                       // named range to watch (preferred)
-    fallback: { sheet: "Sheet1", address: "B2" }       // used only if the name doesn't exist
+    fallback: { sheet: "Overview", address: "B19" }       // used only if the name doesn't exist
   };
 
   let _autoOpenDebounceAt = 0;
