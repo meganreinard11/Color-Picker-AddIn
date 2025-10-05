@@ -1,29 +1,17 @@
-/* eslint-disable no-console */
-"use strict";
-
-/**
- * Env-driven error handling for Excel add-ins.
- * Decision source: _Settings!B4 (TRUE => dev/advanced; FALSE => production).
- *
- * Exports:
- *   - getEnvFlag()
- *   - handleError(error, env, context?)
- *   - tryWrap(action, workFn(env), context?)
- */
-
-var SETTINGS_SHEET = "_Settings";
-var SETTINGS_FLAG_RANGE = "B4";
-var DIAG_SHEET = "_Diagnostics";
-var DIAG_TABLE_NAME = "ErrorLog";
-var DIAG_HEADERS = [
-  "Timestamp",
-  "Action",
-  "Message",
-  "Code",
-  "Location",
-  "Statement",
-  "Stack"
-];
+(function () { 
+  const SETTINGS_SHEET = "_Settings";
+  const SETTINGS_FLAG_RANGE = "B4";
+  const DIAG_SHEET = "_Diagnostics";
+  const DIAG_TABLE_NAME = "ErrorLog";
+  var DIAG_HEADERS = [
+    "Timestamp",
+    "Action",
+    "Message",
+    "Code",
+    "Location",
+    "Statement",
+    "Stack"
+  ];
 
 /** Reads _Settings!B4 and returns { debug: boolean }. Missing sheet/cell => { debug:false }. */
 async function getEnvFlag() {
@@ -34,7 +22,6 @@ async function getEnvFlag() {
         var rng = ws.getRange(SETTINGS_FLAG_RANGE);
         rng.load("values");
         await ctx.sync();
-
         var raw = rng.values && rng.values[0] ? rng.values[0][0] : undefined;
         var debug = coerceBoolean(raw);
         return { debug: debug };
@@ -60,30 +47,22 @@ async function getEnvFlag() {
 async function handleError(err, env, context) {
   context = context || {};
   var offErr = toOfficeError(err);
-  var safeMessage = typeof context.userMessage === "string"
-    ? context.userMessage
-    : "Something went wrong. Please try again.";
-
+  var safeMessage = typeof context.userMessage === "string" ? context.userMessage : "Something went wrong. Please try again.";
   // Always log a concise line.
   console.error("[" + (context.action || "Operation") + "] " + (offErr.message || "Error"), offErr);
-
   if (env && env.debug) {
-    // Verbose console diagnostics.
-    logVerbose(offErr, context);
-
+    logVerbose(offErr, context); // Verbose console diagnostics.
     // In dev, default to also logging in a hidden sheet.
     var doSheetLog = (typeof context.logToSheet === "boolean") ? context.logToSheet : true;
     if (doSheetLog) {
       try { await appendDiagnostics(offErr, context); }
       catch (e) { console.warn("[diagnostics] Unable to write to diagnostics sheet.", e); }
     }
-
     // Quick visible alert (details live in console/diagnostics).
     try { alert(buildDevAlert(offErr, context)); } catch (_) {}
   } else {
     // Production: show friendly message only.
     try { alert(safeMessage); } catch (_) {}
-
     if (context.forceLogToSheet) {
       try { await appendDiagnostics(offErr, context); } catch (_) {}
     }
@@ -105,7 +84,6 @@ async function tryWrap(action, workFn, context) {
 }
 
 /* ------------------------ internals ------------------------ */
-
 function coerceBoolean(v) {
   if (typeof v === "boolean") return v;
   if (typeof v === "number") return v !== 0;
@@ -145,12 +123,8 @@ function logVerbose(e, context) {
   if (e.code) console.log("Code:", e.code);
   if (e.debugInfo && e.debugInfo.errorLocation) console.log("Location:", e.debugInfo.errorLocation);
   if (e.debugInfo && e.debugInfo.statement) console.log("Statement:", e.debugInfo.statement);
-  if (e.debugInfo && e.debugInfo.surroundingStatements && e.debugInfo.surroundingStatements.length) {
-    console.log("Surrounding:", e.debugInfo.surroundingStatements.join("\n"));
-  }
-  if (e.debugInfo && e.debugInfo.traceMessages && e.debugInfo.traceMessages.length) {
-    console.log("Trace:", e.debugInfo.traceMessages);
-  }
+  if (e.debugInfo && e.debugInfo.surroundingStatements && e.debugInfo.surroundingStatements.length) console.log("Surrounding:", e.debugInfo.surroundingStatements.join("\n"));
+  if (e.debugInfo && e.debugInfo.traceMessages && e.debugInfo.traceMessages.length) console.log("Trace:", e.debugInfo.traceMessages);
   if (typeof context.data !== "undefined") console.log("Context data:", context.data);
   if (e.stack) console.log("Stack:", e.stack);
   console.groupEnd();
@@ -169,12 +143,10 @@ function buildDevAlert(e, context) {
 async function appendDiagnostics(e, context) {
   await Excel.run(async function (excelCtx) {
     var wb = excelCtx.workbook;
-
     // Ensure sheet exists.
     var ws = wb.worksheets.getItemOrNullObject(DIAG_SHEET);
     ws.load("name,isNullObject,visibility");
     await excelCtx.sync();
-
     if (ws.isNullObject) {
       ws = wb.worksheets.add(DIAG_SHEET);
       // Create headers
@@ -196,18 +168,15 @@ async function appendDiagnostics(e, context) {
       }
       await excelCtx.sync();
     }
-
     // Ensure table exists (user might have deleted it).
     var table = wb.tables.getItemOrNullObject(DIAG_TABLE_NAME);
     table.load("name,isNullObject,range");
     await excelCtx.sync();
-
     if (table.isNullObject) {
       table = wb.tables.add(ws.name + "!A1:" + colLetter(DIAG_HEADERS.length) + "1", true);
       table.name = DIAG_TABLE_NAME;
       await excelCtx.sync();
     }
-
     // Build row payload
     var row = [
       new Date().toISOString(),
@@ -218,14 +187,12 @@ async function appendDiagnostics(e, context) {
       e.debugInfo && e.debugInfo.statement ? e.debugInfo.statement : "",
       truncate(e.stack || "", 4000)
     ];
-
     table.rows.add(null, [row]);
     await excelCtx.sync();
   });
 }
 
 /* ------------------------ tiny helpers ------------------------ */
-
 function colLetter(n) {
   var s = "";
   while (n > 0) {
@@ -251,16 +218,11 @@ function merge(a, b) {
   Object.keys(b || {}).forEach(function (k) { out[k] = b[k]; });
   return out;
 }
-
-/* ------------------------ exports ------------------------ */
-
-// ESM / CommonJS / UMD-lite export
-var ErrorHandler = { getEnvFlag: getEnvFlag, handleError: handleError, tryWrap: tryWrap };
-
-if (typeof module !== "undefined" && module.exports) {
-  module.exports = ErrorHandler;            // CommonJS
-} else if (typeof window !== "undefined") {
-  window.ErrorHandler = ErrorHandler;       // Browser global (script tag)
-} else if (typeof self !== "undefined") {
-  self.ErrorHandler = ErrorHandler;         // WebWorker/globalThis
-}
+  
+Office.onReady(async () => {
+    wireUi();
+    renderTheme();
+    renderStandard();
+    await getRecentColors();
+  });
+})();
