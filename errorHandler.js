@@ -26,7 +26,7 @@ var DIAG_HEADERS = ["Timestamp","Action","Message","Code","Location","Statement"
 async function handle(err, context) {
   context = context || {};
   var offErr = toOfficeError(err);
-  var safeMessage = typeof context.userMessage === "string" ? context.userMessage : "Something went wrong. Please try again.";.
+  var safeMessage = typeof context.userMessage === "string" ? context.userMessage : "Something went wrong. Please try again.";
   console.error("[" + (context.action || "Operation") + "] " + (offErr.message || "Error"), offErr);
   var env = await getEnvFlag();
   if (env && env.debug) {
