@@ -9,6 +9,7 @@
   const RECENT_START = 5;
   const RECENT_END = 23;
   const RECENT_LIMIT = RECENT_END - RECENT_START;
+  
   let recentCache = [];
   
   /* ==== glue to errorHandler.js ==== */
