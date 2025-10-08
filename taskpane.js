@@ -12,12 +12,9 @@
   
   let recentCache = [];
   
-  /* ==== glue to errorHandler.js ==== */
   async function callHandleError(err, context) {
     try {
-      const EH = (typeof window !== "undefined" && window.ErrorHandler)
-        ? window.ErrorHandler
-        : (typeof ErrorHandler !== "undefined" ? ErrorHandler : null);
+      const EH = (typeof window !== "undefined" && window.ErrorHandler) ? window.ErrorHandler : (typeof ErrorHandler !== "undefined" ? ErrorHandler : null);
       if (EH && typeof EH.handle === "function") {
         await EH.handle(err, context || {});
         return;
@@ -26,8 +23,8 @@
         await EH.handle(err, context || {});
         return;
       }
-    } catch (inner) {
-      console.error("[fallback error]", inner);
+    } catch (e) {
+      console.error("[fallback error]", e);
     }
     const msg = (context && context.userMessage) ? context.userMessage : "Something went wrong. Please try again.";
     try { alert(msg); } catch (_) {}
@@ -65,9 +62,7 @@
   }
 
   async function ensureStoreSheet(context) {
-    const SETTINGS_SHEET_NAME = (typeof window !== "undefined" && typeof SETTINGS_SHEET === "string")
-      ? SETTINGS_SHEET
-      : "_Settings";
+    const SETTINGS_SHEET_NAME = (typeof window !== "undefined" && typeof SETTINGS_SHEET === "string") ? SETTINGS_SHEET : "_Settings";
     let sheet = context.workbook.worksheets.getItemOrNullObject(SETTINGS_SHEET_NAME);
     sheet.load("name,isNullObject,visibility");
     await context.sync();
@@ -237,8 +232,8 @@
     if (!targets.fill && !targets.font && !targets.borders) { alert("Choose at least one target."); return; }
     await Excel.run(async (context) => {
       const range = context.workbook.getSelectedRange();
-      if (targets.fill)  range.format.fill.color = color;
-      if (targets.font)  range.format.font.color = color;
+      if (targets.fill) range.format.fill.color = color;
+      if (targets.font) range.format.font.color = color;
       if (targets.borders) {
         const edges = ["EdgeTop","EdgeBottom","EdgeLeft","EdgeRight"];
         edges.forEach(e => {
@@ -302,7 +297,6 @@
     try {
       await Excel.run(async (context) => {
         const sheet = context.workbook.worksheets.getActiveWorksheet();
-
         // If already listening, remove first (using the original context).
         if (cellSampleEvent) {
           await Excel.run(cellSampleEvent.context, async (ctx) => {
@@ -346,7 +340,6 @@
             }
           }
         };
-
         // Register and keep the EventHandlerResult so we can remove later.
         cellSampleEvent = sheet.onSelectionChanged.add(handler);
         await context.sync();
@@ -390,7 +383,6 @@
     const clearBtn = document.getElementById("clearBtn");
     const eyedropperScreenBtn = document.getElementById("eyedropperScreenBtn");
     const eyedropperCellBtn = document.getElementById("eyedropperCellBtn");
-
     colorInput.addEventListener("input", () => { hexInput.value = colorInput.value.toUpperCase(); });
     hexInput.addEventListener("change", () => {
       const normalized = normalizeHex(hexInput.value);
